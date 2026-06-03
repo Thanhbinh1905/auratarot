@@ -1,7 +1,7 @@
 export type TarotOrientation = 'upright' | 'reversed'
 export type Arcana = 'major' | 'minor'
 export type TarotSuit = 'wands' | 'cups' | 'swords' | 'pentacles'
-export type AssetLicenseStatus = 'placeholder'
+export type AssetLicenseStatus = 'placeholder' | 'local-installed'
 export type SpreadId =
   | 'daily-guidance'
   | 'crossroads-timeline'
@@ -10,11 +10,11 @@ export type SpreadId =
 
 export interface PlaceholderAssetMetadata {
   id: string
-  kind: 'symbolic-placeholder'
+  kind: 'symbolic-placeholder' | 'local-card-image'
   src: string
   alt: string
   licenseStatus: AssetLicenseStatus
-  provenance: 'generated-symbolic-reference'
+  provenance: 'generated-symbolic-reference' | 'public/cards/rws-roses-lilies'
 }
 
 export interface TarotCard {
@@ -84,6 +84,8 @@ interface CreateReadingSessionInput {
   topic?: string
   pathNames?: readonly [string, string]
   deck?: Deck
+  deckOrder?: readonly TarotCard[]
+  selectedCardIds?: readonly string[]
 }
 
 const majorArcana: readonly { name: string; keyword: string }[] = [
@@ -149,13 +151,15 @@ function slug(value: string): string {
 }
 
 function placeholderAsset(cardId: string, name: string): PlaceholderAssetMetadata {
+  const filename = slug(name)
+
   return {
     id: `asset-${cardId}`,
-    kind: 'symbolic-placeholder',
-    src: `placeholder://tarot/${cardId}`,
-    alt: `Symbolic placeholder for ${name}`,
-    licenseStatus: 'placeholder',
-    provenance: 'generated-symbolic-reference',
+    kind: 'local-card-image',
+    src: `/cards/rws-roses-lilies/${filename}.jpg`,
+    alt: `${name} tarot card from the locally installed Roses and Lilies deck`,
+    licenseStatus: 'local-installed',
+    provenance: 'public/cards/rws-roses-lilies',
   }
 }
 
@@ -192,14 +196,14 @@ function buildCards(): TarotCard[] {
 }
 
 export const placeholderRiderWaiteDeck: Deck = {
-  id: 'placeholder-rws-symbolic-v1',
-  name: 'Placeholder Rider-Waite-Smith Structured Deck',
+  id: 'local-rws-roses-lilies-v1',
+  name: 'Local Roses and Lilies Tarot Deck',
   description:
-    'A complete 78-card tarot identity set with symbolic placeholder asset references only; no real artwork is bundled.',
+    'A complete 78-card tarot identity set wired to locally installed card images under public/cards/rws-roses-lilies.',
   cards: buildCards(),
   assetPolicy: {
-    licenseStatus: 'placeholder',
-    note: 'Real Rider-Waite-Smith assets remain gated by PRE-001; these references are symbolic placeholders.',
+    licenseStatus: 'local-installed',
+    note: 'Card faces are loaded only from local public/cards/rws-roses-lilies files; no remote runtime artwork is loaded.',
   },
 }
 
@@ -281,19 +285,42 @@ export function shuffleDeck(cards: readonly TarotCard[], random: () => number): 
   return shuffled
 }
 
+export function sealDeckOrder(seed: string, deck: Deck = placeholderRiderWaiteDeck): TarotCard[] {
+  return shuffleDeck(deck.cards, createSeededRandom(`${seed}:cards`))
+}
+
+export function rotateDeckOrder(cards: readonly TarotCard[], cutIndex: number): TarotCard[] {
+  if (cards.length === 0) {
+    return []
+  }
+
+  const normalizedCutIndex = ((cutIndex % cards.length) + cards.length) % cards.length
+  return [...cards.slice(normalizedCutIndex), ...cards.slice(0, normalizedCutIndex)]
+}
+
+export function drawFromDeckOrder(cards: readonly TarotCard[], selectedCardIds: readonly string[], drawCount: number): TarotCard[] {
+  const selectedCards = selectedCardIds
+    .map((cardId) => cards.find((card) => card.id === cardId))
+    .filter((card): card is TarotCard => Boolean(card))
+
+  const selectedIds = new Set(selectedCards.map((card) => card.id))
+  const remainder = cards.filter((card) => !selectedIds.has(card.id))
+  return [...selectedCards, ...remainder].slice(0, drawCount)
+}
+
 export function createReadingSession(input: CreateReadingSessionInput): ReadingSession {
   const spread = spreadById[input.spreadId]
   const deck = input.deck ?? placeholderRiderWaiteDeck
+  const deckOrder = input.deckOrder ?? sealDeckOrder(input.seed, deck)
 
-  if (deck.cards.length < spread.positions.length) {
+  if (deckOrder.length < spread.positions.length) {
     throw new Error('Deck does not contain enough cards for this spread')
   }
 
-  const cardRandom = createSeededRandom(`${input.seed}:cards`)
   const orientationRandom = createSeededRandom(`${input.seed}:orientation`)
-  const shuffled = shuffleDeck(deck.cards, cardRandom)
+  const drawnOrder = drawFromDeckOrder(deckOrder, input.selectedCardIds ?? [], spread.positions.length)
   const drawnCards = spread.positions.map((position, index) => {
-    const card = shuffled[index]
+    const card = drawnOrder[index]
     if (!card) {
       throw new Error(`Missing drawn card for position ${position.id}`)
     }

@@ -26,9 +26,12 @@ async function completeDailyReading(note?: string) {
   await user.click(screen.getByRole('button', { name: /continue to spreads/i }))
   await user.click(screen.getByRole('button', { name: /begin ritual/i }))
   await user.click(screen.getByRole('button', { name: /shuffle/i }))
-  await user.click(screen.getByRole('button', { name: /cut/i }))
-  await user.click(screen.getByRole('button', { name: /draw/i }))
-  await user.click(screen.getByRole('button', { name: /reveal/i }))
+  await user.click(screen.getByRole('button', { name: /center pile/i }))
+  await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+  await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+  await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
+  await user.click(screen.getByRole('button', { name: /reveal deeper meaning/i }))
+  await user.click(screen.getByRole('button', { name: /reveal practical guidance/i }))
 
   if (note) {
     await user.type(screen.getByLabelText(/journal note/i), note)
@@ -49,9 +52,13 @@ describe('Reading ritual flow', () => {
     await user.click(screen.getByRole('radio', { name: /daily guidance/i }))
     await user.click(screen.getByRole('button', { name: /begin ritual/i }))
     await user.click(screen.getByRole('button', { name: /shuffle/i }))
-    await user.click(screen.getByRole('button', { name: /cut/i }))
-    await user.click(screen.getByRole('button', { name: /draw/i }))
-    await user.click(screen.getByRole('button', { name: /reveal/i }))
+    await user.click(screen.getByRole('button', { name: /center pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+    expect(screen.queryByRole('button', { name: /^reveal$/i })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
+    await user.click(screen.getByRole('button', { name: /reveal deeper meaning/i }))
+    await user.click(screen.getByRole('button', { name: /reveal practical guidance/i }))
 
     expect(screen.getByRole('heading', { name: /your reading/i })).toBeInTheDocument()
     expect(screen.getByText('Self-growth')).toBeInTheDocument()
@@ -62,6 +69,26 @@ describe('Reading ritual flow', () => {
     expect(screen.getByText('What feels true?')).toBeInTheDocument()
     expect(screen.getByText('What should I ask next?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /save reading/i })).toBeEnabled()
+  })
+
+  it('moves the active reading into a dedicated full-page ritual surface with a safe exit and resume path', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /start a reading/i }))
+
+    const ritualSurface = screen.getByRole('main', { name: /dedicated ritual reading surface/i })
+    expect(ritualSurface).toHaveClass('ritual-page')
+    expect(screen.getByRole('heading', { name: /choose your focus/i })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: /primary sections/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: /current surface/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /exit to sanctuary/i }))
+    expect(screen.getByRole('button', { name: /resume reading/i })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /resume reading/i }))
+    expect(screen.getByRole('main', { name: /dedicated ritual reading surface/i })).toHaveClass('ritual-page')
+    expect(screen.getByRole('heading', { name: /choose your focus/i })).toBeInTheDocument()
   })
 
   it('offers every approved topic and spread, including Decision Maker path defaults', async () => {
@@ -105,9 +132,12 @@ describe('Reading ritual flow', () => {
     await user.type(screen.getByLabelText(/path b name/i), 'Change')
     await user.click(screen.getByRole('button', { name: /begin ritual/i }))
     await user.click(screen.getByRole('button', { name: /shuffle/i }))
-    await user.click(screen.getByRole('button', { name: /cut/i }))
-    await user.click(screen.getByRole('button', { name: /draw/i }))
-    await user.click(screen.getByRole('button', { name: /reveal/i }))
+    await user.click(screen.getByRole('button', { name: /center pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 2/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+    await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
+    await user.click(screen.getByRole('button', { name: /reveal card 2/i }))
 
     const cardArticles = screen.getAllByTestId('revealed-card')
     expect(cardArticles).toHaveLength(2)
@@ -130,9 +160,10 @@ describe('Reading ritual flow', () => {
     await user.click(screen.getByRole('button', { name: /continue to spreads/i }))
     await user.click(screen.getByRole('button', { name: /begin ritual/i }))
     await user.click(screen.getByRole('button', { name: /shuffle/i }))
-    await user.click(screen.getByRole('button', { name: /cut/i }))
-    await user.click(screen.getByRole('button', { name: /draw/i }))
-    await user.click(screen.getByRole('button', { name: /reveal/i }))
+    await user.click(screen.getByRole('button', { name: /center pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+    await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
 
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument()
     expect(document.querySelector('img[src="x"]')).toBeNull()
@@ -153,6 +184,74 @@ describe('Reading ritual flow', () => {
     await user.click(screen.getByRole('button', { name: /continue to spreads/i }))
     await user.click(screen.getByRole('button', { name: /begin ritual/i }))
     expect(screen.getByRole('button', { name: /shuffle/i })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: /shuffle/i }))
+    await user.click(screen.getByRole('button', { name: /center pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+
+    const appShell = document.querySelector('.app-shell')
+    expect(appShell).toHaveAttribute('data-reduced-motion', 'true')
+    const revealButton = screen.getByRole('button', { name: /reveal card 1/i })
+    expect(revealButton.querySelector('.flip-card')).not.toHaveClass('is-revealed')
+    await user.click(revealButton)
+    expect(screen.getByRole('button', { name: /revealed card 1/i }).querySelector('.flip-card')).toHaveClass('is-revealed')
+  })
+
+  it('shows a visible ritual table, seals once, cuts by pile, and keeps selected cards hidden before reveal', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /start a reading/i }))
+    await user.click(screen.getByRole('button', { name: /continue to spreads/i }))
+    await user.click(screen.getByRole('radio', { name: /crossroads timeline/i }))
+    await user.click(screen.getByRole('button', { name: /begin ritual/i }))
+
+    expect(screen.getByRole('heading', { name: /ritual tarot table/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/visible sealed tarot deck/i)).toHaveTextContent(/unsealed placeholder deck/i)
+    await user.click(screen.getByRole('button', { name: /shuffle/i }))
+    expect(screen.getByLabelText(/visible sealed tarot deck/i)).toHaveTextContent(/reading set: 78 cards fixed locally/i)
+    expect(screen.getByRole('button', { name: /left pile/i })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /left pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 2/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 3/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+
+    expect(screen.getByLabelText(/reveal cards one at a time/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reveal card 1/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reveal card 2/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reveal card 3/i })).toBeInTheDocument()
+    expect(screen.queryByTestId('card-name')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
+    expect(screen.getAllByTestId('revealed-card')).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: /reveal card 2/i }))
+    await user.click(screen.getByRole('button', { name: /reveal card 3/i }))
+    expect(screen.getAllByTestId('revealed-card')).toHaveLength(3)
+  })
+
+  it('reveals meaning progressively without changing card identity', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /start a reading/i }))
+    await user.click(screen.getByRole('button', { name: /continue to spreads/i }))
+    await user.click(screen.getByRole('button', { name: /begin ritual/i }))
+    await user.click(screen.getByRole('button', { name: /shuffle/i }))
+    await user.click(screen.getByRole('button', { name: /center pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+    await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
+
+    const initialCardName = screen.getByTestId('card-name').textContent
+    expect(screen.getByText(/short summary/i)).toBeInTheDocument()
+    expect(screen.queryByText(/practical next step/i)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reveal deeper meaning/i }))
+    expect(screen.getByTestId('card-name').textContent).toBe(initialCardName)
+    expect(screen.getByText(/deeper meaning/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /reveal practical guidance/i }))
+    expect(screen.getByTestId('card-name').textContent).toBe(initialCardName)
+    expect(screen.getByText(/practical next step/i)).toBeInTheDocument()
   })
 })
 
@@ -219,7 +318,7 @@ describe('App shell', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('exposes accessible navigation for secondary placeholder surfaces', async () => {
+  it('exposes accessible navigation for secondary surfaces', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -253,8 +352,9 @@ describe('Card meaning library', () => {
     expect(screen.getByRole('heading', { name: /keywords/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /upright meaning/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /reversed meaning/i })).toBeInTheDocument()
-    expect(screen.getByText(/placeholder symbolic card/i)).toBeInTheDocument()
-    expect(screen.getByText(/no real Rider-Waite-Smith artwork is bundled/i)).toBeInTheDocument()
+    expect(screen.getByText(/locally installed public\/cards\/rws-roses-lilies deck/i)).toBeInTheDocument()
+    expect(screen.getByText(/no remote runtime artwork is loaded/i)).toBeInTheDocument()
+    expect(screen.getByTestId('local-card-image')).toHaveAttribute('src', '/cards/rws-roses-lilies/the-magician.jpg')
   })
 
   it('filters cards by name and keyword with a friendly empty state', async () => {
@@ -273,7 +373,7 @@ describe('Card meaning library', () => {
     expect(screen.getByText(/no cards match “zz-not-a-card”/i)).toBeInTheDocument()
   })
 
-  it('renders XSS-like search text safely and does not load real artwork', async () => {
+  it('renders XSS-like search text safely and does not request remote artwork', async () => {
     const user = userEvent.setup()
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     render(<App />)
@@ -283,7 +383,7 @@ describe('Card meaning library', () => {
 
     expect(screen.getByText(/<img src=x onerror=alert\(1\)>/i)).toBeInTheDocument()
     expect(document.querySelector('img[src="x"]')).toBeNull()
-    expect(screen.getByTestId('library-placeholder-art')).toBeInTheDocument()
+    expect(screen.getByTestId('local-card-image')).toHaveAttribute('src', expect.stringMatching(/^\/cards\/rws-roses-lilies\/.+\.jpg$/))
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
@@ -369,9 +469,10 @@ describe('Saved readings journal', () => {
     await user.click(screen.getByRole('button', { name: /continue to spreads/i }))
     await user.click(screen.getByRole('button', { name: /begin ritual/i }))
     await user.click(screen.getByRole('button', { name: /shuffle/i }))
-    await user.click(screen.getByRole('button', { name: /cut/i }))
-    await user.click(screen.getByRole('button', { name: /draw/i }))
-    await user.click(screen.getByRole('button', { name: /reveal/i }))
+    await user.click(screen.getByRole('button', { name: /center pile/i }))
+    await user.click(screen.getByRole('button', { name: /select face-down card 1/i }))
+    await user.click(screen.getByRole('button', { name: /draw selected cards/i }))
+    await user.click(screen.getByRole('button', { name: /reveal card 1/i }))
     await user.type(screen.getByLabelText(/journal note/i), '<script>alert(1)</script>')
     await user.click(screen.getByRole('button', { name: /save reading/i }))
     await user.click(screen.getByRole('button', { name: /journal/i }))

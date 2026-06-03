@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   createReadingSession,
+  rotateDeckOrder,
+  sealDeckOrder,
   getInterpretation,
   placeholderRiderWaiteDeck,
   spreads,
@@ -17,6 +19,7 @@ type ReadingStep = 'intro' | 'topic' | 'spread' | 'ritual' | 'reveal'
 type RitualStage = 'shuffle' | 'cut' | 'draw' | 'reveal'
 type ExportFormat = 'pdf' | 'image'
 type MotionPreference = 'default' | 'reduced'
+type MeaningLayer = 'summary' | 'deeper' | 'guidance'
 
 interface ExportTarget {
   source: 'current' | 'saved'
@@ -48,7 +51,7 @@ const surfaces: Surface[] = [
     eyebrow: 'Warm candlelit sanctuary',
     title: 'Begin in a quiet place',
     description:
-      'Settle into a calm local-first space for reflection. Your reading is generated privately on this device with symbolic placeholder cards.',
+      'Settle into a calm local-first space for reflection. Your reading is generated privately on this device with locally installed card images.',
   },
   {
     id: 'journal',
@@ -64,7 +67,7 @@ const surfaces: Surface[] = [
     eyebrow: 'Beginner card study',
     title: 'Learn the cards gently',
     description:
-      'A secondary study aid for browsing placeholder card identities, simple keywords, and basic upright or reversed reflection prompts.',
+      'A secondary study aid for browsing local card imagery, simple keywords, and basic upright or reversed reflection prompts.',
   },
   {
     id: 'preferences',
@@ -116,7 +119,13 @@ const focusableModalSelector = [
 
 const libraryCards = placeholderRiderWaiteDeck.cards
 const placeholderArtworkNote =
-  'Placeholder symbolic card only. No real Rider-Waite-Smith artwork is bundled or loaded.'
+  'Card faces are loaded from the locally installed public/cards/rws-roses-lilies deck. Card backs remain a local CSS ritual pattern because no separate back asset was found.'
+const cutPileOptions = [
+  { id: 'left', label: 'Left pile', ratio: 0.28, description: 'Lift a small opening packet.' },
+  { id: 'center', label: 'Center pile', ratio: 0.5, description: 'Split the deck near the middle.' },
+  { id: 'right', label: 'Right pile', ratio: 0.72, description: 'Carry a deeper packet forward.' },
+] as const
+const fanPreviewCount = 18
 
 interface ModalDialogProps {
   children: ReactNode
@@ -233,6 +242,27 @@ function matchesCardSearch(card: TarotCard, normalizedQuery: string): boolean {
     .toLowerCase()
 
   return searchableText.includes(normalizedQuery)
+}
+
+function CardFace({ card, className = '' }: { card: TarotCard; className?: string }) {
+  if (card.asset.kind === 'local-card-image') {
+    return (
+      <img
+        alt={card.asset.alt}
+        className={`card-face-image${className ? ` ${className}` : ''}`}
+        data-testid="local-card-image"
+        loading="lazy"
+        src={card.asset.src}
+      />
+    )
+  }
+
+  return (
+    <span className={`placeholder-card-art${className ? ` ${className}` : ''}`} aria-label={card.asset.alt} role="img">
+      <span>✦</span>
+      <small>{card.arcana === 'major' ? 'Major Arcana' : card.suit}</small>
+    </span>
+  )
 }
 
 function loadInitialSavedReadings(): SavedReadingSnapshot[] {
@@ -490,12 +520,18 @@ export function App() {
   const [motionPreference, setMotionPreferenceState] = useState<MotionPreference>(loadInitialMotionPreference)
   const [showWelcomeNotice, setShowWelcomeNotice] = useState(loadInitialWelcomeNoticeVisibility)
   const [readingStep, setReadingStep] = useState<ReadingStep>('intro')
+  const [isRitualSurfaceOpen, setIsRitualSurfaceOpen] = useState(false)
   const [selectedTopicId, setSelectedTopicId] = useState('love')
   const [intention, setIntention] = useState('')
   const [selectedSpreadId, setSelectedSpreadId] = useState<SpreadId>('daily-guidance')
   const [pathAName, setPathAName] = useState('Path A')
   const [pathBName, setPathBName] = useState('Path B')
   const [completedRitualStages, setCompletedRitualStages] = useState<RitualStage[]>([])
+  const [sealedDeckOrder, setSealedDeckOrder] = useState<TarotCard[] | null>(null)
+  const [cutDeckOrder, setCutDeckOrder] = useState<TarotCard[] | null>(null)
+  const [selectedFanCardIds, setSelectedFanCardIds] = useState<string[]>([])
+  const [revealedCardIds, setRevealedCardIds] = useState<string[]>([])
+  const [visibleMeaningLayers, setVisibleMeaningLayers] = useState<MeaningLayer[]>(['summary'])
   const [reading, setReading] = useState<ReadingSession | null>(null)
   const [journalDraft, setJournalDraft] = useState('')
   const [savedReadings, setSavedReadings] = useState<SavedReadingSnapshot[]>(loadInitialSavedReadings)
@@ -519,13 +555,22 @@ export function App() {
   )
 
   const selectedTopic = topicChoices.find((topic) => topic.id === selectedTopicId) ?? topicChoices[0]
+  const selectedSpread = spreadOptions.find((spread) => spread.id === selectedSpreadId) ?? spreadOptions[0]
   const canShowPathNames = selectedSpreadId === 'decision-maker'
   const topicSummary = selectedTopic?.label ?? 'Love'
   const trimmedIntention = intention.trim()
+  const pathNames = [pathAName.trim() || 'Path A', pathBName.trim() || 'Path B'] as const
+  const ritualSeed = `${selectedSpreadId}:${selectedTopicId}:${readableSeed(trimmedIntention)}:${pathNames.join('|')}`
+  const requiredDrawCount = selectedSpread.positions.length
   const nextRitualStage = ritualStages.find((stage) => !completedRitualStages.includes(stage.id))
+  const tableDeckOrder = cutDeckOrder ?? sealedDeckOrder ?? placeholderRiderWaiteDeck.cards
+  const fanCards = tableDeckOrder.slice(0, Math.max(fanPreviewCount, requiredDrawCount))
   const selectedSavedReading = savedReadings.find((entry) => entry.id === selectedSavedReadingId) ?? null
-  const hasUnsavedCompletedReading = readingStep === 'reveal' && reading !== null && !hasSavedCurrentReading
-  const shouldWarnBeforeLeaving = hasUnsavedCompletedReading || (readingStep === 'reveal' && !hasSavedCurrentReading && journalDraft.trim().length > 0)
+  const allRequiredCardsRevealed = reading
+    ? reading.drawnCards.length === requiredDrawCount && reading.drawnCards.every((draw) => revealedCardIds.includes(draw.card.id))
+    : false
+  const hasUnsavedCompletedReading = readingStep === 'reveal' && reading !== null && allRequiredCardsRevealed && !hasSavedCurrentReading
+  const shouldWarnBeforeLeaving = hasUnsavedCompletedReading || (readingStep === 'reveal' && allRequiredCardsRevealed && !hasSavedCurrentReading && journalDraft.trim().length > 0)
   const normalizedLibrarySearch = librarySearch.trim().toLowerCase()
   const filteredLibraryCards = useMemo(
     () => libraryCards.filter((card) => matchesCardSearch(card, normalizedLibrarySearch)),
@@ -535,6 +580,8 @@ export function App() {
     ?? filteredLibraryCards[0]
     ?? libraryCards[0]
   const reducedMotion = motionPreference === 'reduced'
+  const hasReadingInProgress = readingStep !== 'intro'
+  const isDedicatedRitualSurface = activeSurface === 'home' && isRitualSurfaceOpen && hasReadingInProgress
 
   function setMotionPreference(next: MotionPreference) {
     setMotionPreferenceState(next)
@@ -557,7 +604,13 @@ export function App() {
 
   function resetReadingFlow() {
     setReadingStep('topic')
+    setIsRitualSurfaceOpen(true)
     setCompletedRitualStages([])
+    setSealedDeckOrder(null)
+    setCutDeckOrder(null)
+    setSelectedFanCardIds([])
+    setRevealedCardIds([])
+    setVisibleMeaningLayers(['summary'])
     setReading(null)
     setJournalDraft('')
     setHasSavedCurrentReading(false)
@@ -566,6 +619,11 @@ export function App() {
 
   function beginRitual() {
     setCompletedRitualStages([])
+    setSealedDeckOrder(null)
+    setCutDeckOrder(null)
+    setSelectedFanCardIds([])
+    setRevealedCardIds([])
+    setVisibleMeaningLayers(['summary'])
     setReading(null)
     setJournalDraft('')
     setHasSavedCurrentReading(false)
@@ -578,10 +636,22 @@ export function App() {
       return
     }
 
+    setIsRitualSurfaceOpen(false)
     setActiveSurface(surfaceId)
     if (surfaceId !== 'home') {
       setReadingStep('intro')
     }
+  }
+
+  function exitRitualSurface() {
+    setIsRitualSurfaceOpen(false)
+    setActiveSurface('home')
+    startButtonRef.current?.focus()
+  }
+
+  function resumeRitualSurface() {
+    setActiveSurface('home')
+    setIsRitualSurfaceOpen(true)
   }
 
   function buildSavedReadingSnapshot(currentReading: ReadingSession): SavedReadingSnapshot {
@@ -692,25 +762,84 @@ export function App() {
       return
     }
 
-    if (stage === 'draw') {
-      const pathNames = [pathAName.trim() || 'Path A', pathBName.trim() || 'Path B'] as const
-      setReading(
-        createReadingSession({
-          spreadId: selectedSpreadId,
-          topic: `${topicSummary}${trimmedIntention ? `: ${trimmedIntention}` : ''}`,
-          seed: `${selectedSpreadId}:${selectedTopicId}:${readableSeed(trimmedIntention)}:${pathNames.join('|')}`,
-          pathNames: selectedSpreadId === 'decision-maker' ? pathNames : undefined,
-        }),
-      )
+    if (stage === 'shuffle') {
+      setSealedDeckOrder((current) => current ?? sealDeckOrder(ritualSeed))
+      setCutDeckOrder(null)
+      setSelectedFanCardIds([])
+      setCompletedRitualStages((current) => (current.includes(stage) ? current : [...current, stage]))
+      return
     }
 
-    if (stage === 'reveal') {
-      setCompletedRitualStages((current) => [...current, stage])
+    if (stage === 'draw') {
+      const deckOrder = cutDeckOrder ?? sealedDeckOrder
+      if (!deckOrder || selectedFanCardIds.length < requiredDrawCount) {
+        return
+      }
+
+      const nextReading = createReadingSession({
+        spreadId: selectedSpreadId,
+        topic: `${topicSummary}${trimmedIntention ? `: ${trimmedIntention}` : ''}`,
+        seed: ritualSeed,
+        deckOrder,
+        selectedCardIds: selectedFanCardIds,
+        pathNames: selectedSpreadId === 'decision-maker' ? pathNames : undefined,
+      })
+      setReading(nextReading)
+      setRevealedCardIds([])
+      setVisibleMeaningLayers(['summary'])
+      setCompletedRitualStages((current) => (current.includes(stage) ? current : [...current, stage]))
       setReadingStep('reveal')
       return
     }
 
     setCompletedRitualStages((current) => [...current, stage])
+  }
+
+  function chooseCutPile(ratio: number) {
+    if (nextRitualStage?.id !== 'cut' || !sealedDeckOrder) {
+      return
+    }
+
+    const cutIndex = Math.max(1, Math.min(sealedDeckOrder.length - 1, Math.round(sealedDeckOrder.length * ratio)))
+    setCutDeckOrder(rotateDeckOrder(sealedDeckOrder, cutIndex))
+    setSelectedFanCardIds([])
+    setCompletedRitualStages((current) => (current.includes('cut') ? current : [...current, 'cut']))
+  }
+
+  function toggleFanCard(cardId: string) {
+    if (nextRitualStage?.id !== 'draw') {
+      return
+    }
+
+    setSelectedFanCardIds((current) => {
+      if (current.includes(cardId)) {
+        return current.filter((id) => id !== cardId)
+      }
+
+      if (current.length >= requiredDrawCount) {
+        return current
+      }
+
+      return [...current, cardId]
+    })
+  }
+
+  function revealNextMeaningLayer() {
+    setVisibleMeaningLayers((current) => {
+      if (!current.includes('deeper')) {
+        return [...current, 'deeper']
+      }
+
+      if (!current.includes('guidance')) {
+        return [...current, 'guidance']
+      }
+
+      return current
+    })
+  }
+
+  function revealDrawnCard(cardId: string) {
+    setRevealedCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]))
   }
 
   function renderSavedReadingDetail(entry: SavedReadingSnapshot) {
@@ -826,7 +955,7 @@ export function App() {
         <p className="eyebrow">Study aid only</p>
         <h2 id="library-panel-title">Browse simple card meanings</h2>
         <p className="ritual-copy">
-          This library uses the same local placeholder tarot data as readings. The copy is intentionally basic for MVP learning and does not add real artwork, remote card data, AI meanings, or predictions.
+          This library uses the same local tarot data and installed card images as readings. The copy is intentionally basic for MVP learning and does not add remote card data, AI meanings, or predictions.
         </p>
         <label className="field-label" htmlFor="card-library-search">
           Search cards by name or keyword
@@ -874,9 +1003,7 @@ export function App() {
             )}
           </section>
           <article className="library-detail" aria-labelledby="library-card-title">
-            <div className="placeholder-card-art library-art" data-testid="library-placeholder-art" role="img" aria-label={selectedLibraryCard.asset.alt}>
-              ✦
-            </div>
+            <CardFace card={selectedLibraryCard} className="library-art" />
             <div className="artwork-note">
               <strong>Artwork provenance</strong>
               <p>{placeholderArtworkNote}</p>
@@ -907,6 +1034,19 @@ export function App() {
   }
 
   function renderHomeContent() {
+    if (hasReadingInProgress && !isRitualSurfaceOpen) {
+      return (
+        <div className="hero-actions" aria-label="Reading entry points">
+          <button className="primary-cta" onClick={resumeRitualSurface} ref={startButtonRef} type="button">
+            Resume Reading
+          </button>
+          <p className="cta-note" id="reading-local-note">
+            Your current reading state is still held locally in this browser session.
+          </p>
+        </div>
+      )
+    }
+
     if (readingStep === 'topic') {
       return (
         <section className="ritual-card" aria-labelledby="topic-step-title">
@@ -1025,14 +1165,88 @@ export function App() {
       return (
         <section className="ritual-card ritual-stage-card" aria-labelledby="ritual-step-title">
           <p className="eyebrow">Step 3 of 4</p>
-          <h2 id="ritual-step-title">Ritual shuffle, cut, draw</h2>
+          <h2 id="ritual-step-title">Ritual tarot table</h2>
           <p className="ritual-copy">
-            Use each button in order. Reduced Motion keeps the same actions and removes animation dependence.
+            Shuffle seals the local deck order once. Cut rotates that fixed order, draw chooses face-down cards, and reveal turns over only those cards.
           </p>
+          <div className="tarot-table" data-reduced-motion={reducedMotion} data-stage={nextRitualStage?.id ?? 'complete'}>
+            <div className="table-glow" aria-hidden="true" />
+            <div className="deck-zone" aria-label="Visible sealed tarot deck">
+              <div className="deck-stack" data-sealed={Boolean(sealedDeckOrder)}>
+                {Array.from({ length: 7 }, (_, index) => (
+                  <span className="deck-card-layer" key={index} style={{ '--layer-index': index } as CSSProperties} />
+                ))}
+                <span className="deck-back-symbol" aria-hidden="true">✦</span>
+              </div>
+              <p>{sealedDeckOrder ? `Reading set: ${String(tableDeckOrder.length)} cards fixed locally` : 'Unsealed placeholder deck'}</p>
+            </div>
+
+            {nextRitualStage?.id === 'cut' ? (
+              <div className="cut-piles" aria-label="Choose a cut pile">
+                {cutPileOptions.map((pile) => (
+                  <button className="cut-pile" key={pile.id} onClick={() => { chooseCutPile(pile.ratio) }} type="button">
+                    <span className="pile-cards" aria-hidden="true" />
+                    <strong>{pile.label}</strong>
+                    <small>{pile.description}</small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {nextRitualStage?.id === 'draw' ? (
+              <div className="fan-zone" aria-labelledby="fan-zone-title">
+                <h3 id="fan-zone-title">Select {requiredDrawCount} face-down card{requiredDrawCount === 1 ? '' : 's'}</h3>
+                <div className="card-fan" aria-label="Face-down tarot fan" style={{ '--fan-total': fanCards.length } as CSSProperties}>
+                  {fanCards.map((card, index) => {
+                    const isSelected = selectedFanCardIds.includes(card.id)
+                    return (
+                      <button
+                        aria-label={`${isSelected ? 'Deselect' : 'Select'} face-down card ${index < 9 ? String(index + 1) : `number ${String(index + 1)}`}`}
+                        aria-pressed={isSelected}
+                        className="fan-card-button"
+                        key={card.id}
+                        onClick={() => { toggleFanCard(card.id) }}
+                        style={{
+                          '--fan-index': index,
+                          '--fan-total': fanCards.length,
+                          '--fan-offset': index - (fanCards.length - 1) / 2,
+                          '--fan-depth': Math.abs(index - (fanCards.length - 1) / 2),
+                        } as CSSProperties}
+                        type="button"
+                      >
+                        <span className="card-back-mini" aria-hidden="true">✦</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  className="primary-cta compact"
+                  disabled={selectedFanCardIds.length !== requiredDrawCount}
+                  onClick={() => { completeRitualStage('draw') }}
+                  type="button"
+                >
+                  Draw selected cards
+                </button>
+              </div>
+            ) : null}
+
+            {reading && nextRitualStage?.id === 'reveal' ? (
+              <div className="face-down-spread" aria-label="Selected cards remain face down until reveal">
+                {reading.drawnCards.map((draw, index) => (
+                  <article className="spread-slot face-down dealt-slot" key={`${draw.position.id}-${draw.card.id}`} style={{ '--deal-index': index } as CSSProperties}>
+                    <div className="card-back-large" aria-label={`Face-down card for ${positionLabel(reading, draw)}`} role="img">✦</div>
+                    <p className="position-label">{positionLabel(reading, draw)}</p>
+                    <small>Card {String(index + 1)} is selected and hidden.</small>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <ol className="ritual-timeline" aria-label="Ritual progress">
             {ritualStages.map((stage) => {
               const isDone = completedRitualStages.includes(stage.id)
               const isNext = nextRitualStage?.id === stage.id
+              const isManualStage = stage.id === 'cut' || stage.id === 'draw' || stage.id === 'reveal'
               return (
                 <li className="ritual-stage" data-active={isNext} data-complete={isDone} key={stage.id}>
                   <span className="stage-orb" aria-hidden="true">✦</span>
@@ -1042,13 +1256,13 @@ export function App() {
                   </div>
                   <button
                     className="secondary-button"
-                    disabled={!isNext}
+                    disabled={!isNext || isManualStage}
                     onClick={() => {
                       completeRitualStage(stage.id)
                     }}
                     type="button"
                   >
-                    {stage.label}
+                    {stage.id === 'reveal' ? 'Use card buttons' : isManualStage ? 'Use table' : stage.label}
                   </button>
                 </li>
               )
@@ -1071,29 +1285,71 @@ export function App() {
             {trimmedIntention ? <span>{trimmedIntention}</span> : null}
             <span>{displaySpreadTitle(reading.spread)}</span>
           </div>
-          <div className="revealed-grid">
-            {reading.drawnCards.map((draw) => {
+          <div className="revealed-grid" aria-label="Reveal cards one at a time">
+            {reading.drawnCards.map((draw, index) => {
               const interpretation = getInterpretation(draw)
+              const isRevealed = revealedCardIds.includes(draw.card.id)
               return (
-                <article className="revealed-card" data-testid="revealed-card" key={`${draw.position.id}-${draw.card.id}`}>
-                  <div className="placeholder-card-art" aria-label={draw.card.asset.alt} role="img">
-                    ✦
-                  </div>
+                <article
+                  className={`revealed-card ritual-revealed-card${isRevealed ? ' is-card-revealed' : ' face-down dealt-slot'}`}
+                  data-testid={isRevealed ? 'revealed-card' : 'face-down-reading-card'}
+                  key={`${draw.position.id}-${draw.card.id}`}
+                  style={{ '--deal-index': index } as CSSProperties}
+                >
+                  <button
+                    aria-label={isRevealed
+                      ? `Revealed card ${String(index + 1)} for ${positionLabel(reading, draw)}: ${draw.card.name}`
+                      : `Reveal card ${String(index + 1)} for ${positionLabel(reading, draw)}`}
+                    aria-pressed={isRevealed}
+                    className="reveal-card-button"
+                    disabled={isRevealed}
+                    onClick={() => { revealDrawnCard(draw.card.id) }}
+                    type="button"
+                  >
+                    <span className={`flip-card${isRevealed ? ' is-revealed' : ''}`}>
+                      <span className="card-back-large flip-face flip-back" aria-hidden="true">✦</span>
+                      <CardFace card={draw.card} className="flip-face flip-front" />
+                    </span>
+                  </button>
                   <p className="position-label">{positionLabel(reading, draw)}</p>
-                  <h3 data-testid="card-name">{draw.card.name}</h3>
-                  <p className="orientation-pill">{draw.orientation}</p>
-                  <p className="keyword-line">Keywords: {draw.card.keywords.join(', ')}</p>
-                  <h4>Short summary</h4>
-                  <p>{interpretation.summary}</p>
-                  <h4>Deeper meaning</h4>
-                  <p>{interpretation.deeperMeaning}</p>
-                  <h4>Practical next step</h4>
-                  <p>{interpretation.nextStep}</p>
+                  {isRevealed ? (
+                    <>
+                      <h3 data-testid="card-name">{draw.card.name}</h3>
+                      <p className="orientation-pill">{draw.orientation}</p>
+                      <p className="keyword-line">Keywords: {draw.card.keywords.join(', ')}</p>
+                      <h4>Short summary</h4>
+                      <p>{interpretation.summary}</p>
+                    </>
+                  ) : (
+                    <p className="cta-note">Face down. Activate this card to reveal its fixed identity.</p>
+                  )}
+                  {isRevealed && visibleMeaningLayers.includes('deeper') ? (
+                    <section className="meaning-layer" aria-label={`${draw.card.name} deeper meaning`}>
+                      <h4>Deeper meaning</h4>
+                      <p>{interpretation.deeperMeaning}</p>
+                    </section>
+                  ) : null}
+                  {isRevealed && visibleMeaningLayers.includes('guidance') ? (
+                    <section className="meaning-layer" aria-label={`${draw.card.name} practical guidance`}>
+                      <h4>Practical next step</h4>
+                      <p>{interpretation.nextStep}</p>
+                    </section>
+                  ) : null}
                 </article>
               )
             })}
           </div>
-          <div className="journal-draft" aria-labelledby="journal-draft-title">
+          <p className="cta-note" role="status">
+            {allRequiredCardsRevealed
+              ? 'All selected cards are revealed. The reading is complete.'
+              : `Reveal ${String(requiredDrawCount - revealedCardIds.length)} more card${requiredDrawCount - revealedCardIds.length === 1 ? '' : 's'} to complete the reading.`}
+          </p>
+          {allRequiredCardsRevealed && visibleMeaningLayers.length < 3 ? (
+            <button className="primary-cta compact" onClick={revealNextMeaningLayer} type="button">
+              Reveal {visibleMeaningLayers.includes('deeper') ? 'practical guidance' : 'deeper meaning'}
+            </button>
+          ) : null}
+          {allRequiredCardsRevealed ? <div className="journal-draft" aria-labelledby="journal-draft-title">
             <h3 id="journal-draft-title">Journal draft</h3>
             <p>Use these prompts now. Save is manual and local-only; export remains a later placeholder.</p>
             <ul>
@@ -1131,15 +1387,15 @@ export function App() {
               </button>
             </div>
             {storageMessage ? <p className="status-message" role="status">{storageMessage}</p> : null}
-          </div>
+          </div> : null}
         </section>
       )
     }
 
     return (
       <div className="hero-actions" aria-label="Reading entry points">
-        <button className="primary-cta" onClick={resetReadingFlow} ref={startButtonRef} type="button">
-          Start a Reading
+        <button className="primary-cta" onClick={hasReadingInProgress ? resumeRitualSurface : resetReadingFlow} ref={startButtonRef} type="button">
+          {hasReadingInProgress ? 'Resume Reading' : 'Start a Reading'}
         </button>
         <p className="cta-note" id="reading-local-note">
           No account, backend, analytics, or AI service is used for this local ritual.
@@ -1226,8 +1482,52 @@ export function App() {
     )
   }
 
+  function renderDedicatedRitualSurface() {
+    const isTableActive = readingStep === 'ritual' || readingStep === 'reveal'
+
+    return (
+      <main className={`ritual-page${isTableActive ? ' is-table-active' : ''}`} id="sanctuary-content" aria-label="Dedicated ritual reading surface">
+        <header className="ritual-page-header">
+          <a className="skip-link" href="#ritual-surface-content">
+            Skip to ritual content
+          </a>
+          <div className="brand-lockup" aria-label="AuraTarot ritual surface">
+            <span className="brand-mark" aria-hidden="true">
+              ✦
+            </span>
+            <div>
+              <p className="brand-kicker">AuraTarot</p>
+              <p className="brand-subtitle">Dedicated local ritual surface</p>
+            </div>
+          </div>
+          <div className="ritual-page-actions" aria-label="Ritual surface exits">
+            <button className="secondary-button" onClick={() => { navigateToSurface('journal') }} type="button">
+              Journal
+            </button>
+            <button className="secondary-button" onClick={exitRitualSurface} type="button">
+              Exit to sanctuary
+            </button>
+          </div>
+        </header>
+
+        <section className="ritual-page-stage" id="ritual-surface-content" aria-labelledby="ritual-page-title">
+          <div className="ritual-page-intro">
+            <p className="eyebrow">Full-page reading table</p>
+            <h1 id="ritual-page-title">Your private ritual is open</h1>
+            <p className="lede">
+              Deck, spread, reveal, save, and export stay in this uninterrupted surface. Use Exit to sanctuary to step away without clearing the current reading state.
+            </p>
+          </div>
+          {renderHomeContent()}
+        </section>
+      </main>
+    )
+  }
+
   return (
-    <div className="app-shell" data-reduced-motion={reducedMotion}>
+      <div className={`app-shell${isDedicatedRitualSurface ? ' is-ritual-shell' : ''}`} data-reduced-motion={reducedMotion}>
+      {isDedicatedRitualSurface ? renderDedicatedRitualSurface() : (
+        <>
       <header className="site-header">
         <a className="skip-link" href="#sanctuary-content">
           Skip to sanctuary content
@@ -1351,12 +1651,14 @@ export function App() {
           ) : (
             <ul className="placeholder-list" aria-label="Local reading safeguards">
               <li>No network transmission for reading generation.</li>
-              <li>Symbolic placeholder cards only; no real artwork.</li>
+              <li>Card faces load from local installed files only; no remote artwork requests.</li>
               <li>Journal saves and exports stay local to this browser; review files before sharing.</li>
             </ul>
           )}
         </aside>
       </main>
+        </>
+      )}
       {pendingSurface ? (
         <ModalDialog labelledBy="leave-dialog-title" onEscape={() => {
           setPendingSurface(null)

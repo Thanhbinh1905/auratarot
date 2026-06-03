@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   createReadingSession,
+  drawFromDeckOrder,
   getInterpretation,
   placeholderRiderWaiteDeck,
+  rotateDeckOrder,
+  sealDeckOrder,
   spreads,
 } from './index'
 
 describe('tarot domain', () => {
-  it('defines a unique 78-card placeholder deck with no real artwork', () => {
+  it('defines a unique 78-card deck wired to local installed card images', () => {
     const ids = placeholderRiderWaiteDeck.cards.map((card) => card.id)
     const assets: { kind: string; licenseStatus: string; src: string }[] = placeholderRiderWaiteDeck.cards.map(
       (card) => card.asset,
@@ -15,11 +18,13 @@ describe('tarot domain', () => {
 
     expect(placeholderRiderWaiteDeck.cards).toHaveLength(78)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(placeholderRiderWaiteDeck.assetPolicy.licenseStatus).toBe('placeholder')
-    expect(assets.every((asset) => asset.licenseStatus === 'placeholder')).toBe(true)
-    expect(assets.every((asset) => asset.kind === 'symbolic-placeholder')).toBe(true)
-    expect(assets.every((asset) => asset.src.startsWith('placeholder://'))).toBe(true)
-    expect(assets.some((asset) => /\.png$|\.jpe?g$|\.webp$/i.exec(asset.src))).toBe(false)
+    expect(placeholderRiderWaiteDeck.assetPolicy.licenseStatus).toBe('local-installed')
+    expect(assets.every((asset) => asset.licenseStatus === 'local-installed')).toBe(true)
+    expect(assets.every((asset) => asset.kind === 'local-card-image')).toBe(true)
+    expect(assets.every((asset) => asset.src.startsWith('/cards/rws-roses-lilies/'))).toBe(true)
+    expect(assets.every((asset) => asset.src.endsWith('.jpg'))).toBe(true)
+    expect(assets).toContainEqual(expect.objectContaining({ src: '/cards/rws-roses-lilies/the-fool.jpg' }))
+    expect(assets).toContainEqual(expect.objectContaining({ src: '/cards/rws-roses-lilies/ace-of-cups.jpg' }))
   })
 
   it('maps approved spread definitions to stable positions', () => {
@@ -55,6 +60,40 @@ describe('tarot domain', () => {
     expect(first.drawnCards).toEqual(second.drawnCards)
     expect(new Set(first.drawnCards.map((draw) => draw.card.id)).size).toBe(first.drawnCards.length)
     expect(first.drawnCards.map((draw) => draw.position.id)).toEqual(['past', 'present', 'near-future'])
+  })
+
+  it('seals deck order once, rotates only by cut, and draws selected cards from that order', () => {
+    const sealed = sealDeckOrder('sealed-ritual-test')
+    const resealed = sealDeckOrder('sealed-ritual-test')
+    const rotated = rotateDeckOrder(sealed, 9)
+    const selected = [rotated[12]?.id, rotated[4]?.id].filter((id): id is string => Boolean(id))
+    const drawn = drawFromDeckOrder(rotated, selected, 3)
+
+    expect(sealed.map((card) => card.id)).toEqual(resealed.map((card) => card.id))
+    expect(new Set(rotated.map((card) => card.id))).toEqual(new Set(sealed.map((card) => card.id)))
+    expect(rotated.map((card) => card.id)).toEqual([...sealed.slice(9), ...sealed.slice(0, 9)].map((card) => card.id))
+    expect(drawn.map((card) => card.id).slice(0, 2)).toEqual(selected)
+    expect(new Set(drawn.map((card) => card.id)).size).toBe(drawn.length)
+  })
+
+  it('uses supplied sealed deck order so reveal identity remains stable across later calls', () => {
+    const sealed = rotateDeckOrder(sealDeckOrder('identity-stability'), 17)
+    const selectedCardIds = [sealed[6]?.id, sealed[1]?.id, sealed[9]?.id].filter((id): id is string => Boolean(id))
+    const first = createReadingSession({
+      spreadId: 'crossroads-timeline',
+      seed: 'identity-stability',
+      deckOrder: sealed,
+      selectedCardIds,
+    })
+    const revealOnly = createReadingSession({
+      spreadId: 'crossroads-timeline',
+      seed: 'identity-stability',
+      deckOrder: sealed,
+      selectedCardIds,
+    })
+
+    expect(first.drawnCards).toEqual(revealOnly.drawnCards)
+    expect(first.drawnCards.map((draw) => draw.card.id)).toEqual(selectedCardIds)
   })
 
   it('supports decision maker path defaults and rejects undersized decks', () => {

@@ -24,7 +24,11 @@ Exports are generated client-side. Users should treat exported files as private 
 
 ## Asset Provenance
 
-Real tarot artwork is not included in this build. Future artwork must pass a documented provenance and licensing review before being added to the repository or release artifacts.
+Local real tarot card fronts are included under `public/cards/rws-roses-lilies/`. The asset set is documented in `docs/assets/rws-roses-lilies-provenance.json`, which records the Wikimedia Commons Roses and Lilies category URL, a sample source file URL, public-domain-tagged Commons provenance evidence, file count, and SHA-256 checksums for all 78 local front images.
+
+The provenance manifest is not legal approval or a legal opinion. Legal review is recommended before commercial release or redistribution decisions. No separate card-back image exists; the application uses the existing CSS-rendered local card back.
+
+Card fronts are served from local repository files only. No remote runtime artwork loading is introduced.
 
 ## Operational Boundaries
 
