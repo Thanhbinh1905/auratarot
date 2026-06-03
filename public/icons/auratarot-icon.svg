@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AuraTarot placeholder app icon">
+  <rect width="512" height="512" rx="112" fill="#170d12" />
+  <circle cx="256" cy="256" r="170" fill="#f5a85c" opacity="0.16" />
+  <path d="M256 94l38 110 116 52-116 52-38 110-38-110-116-52 116-52z" fill="#ffd18a" />
+  <circle cx="256" cy="256" r="42" fill="#3b211e" />
+</svg>

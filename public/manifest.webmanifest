@@ -1,0 +1,18 @@
+{
+  "name": "AuraTarot",
+  "short_name": "AuraTarot",
+  "description": "A local-first tarot reflection app. Saved readings stay in the current browser on the current device.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#170d12",
+  "theme_color": "#170d12",
+  "icons": [
+    {
+      "src": "/icons/auratarot-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
